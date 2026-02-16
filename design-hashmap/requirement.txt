@@ -1,0 +1,7 @@
+Requirements:
+1. add key and value pair
+2. update/override existing key with new value
+3. support all data types for key and value
+4. get value corresponding to kye
+5. get list of key,values of map
+6. get size of map
