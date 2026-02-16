@@ -1,0 +1,1 @@
+Any classes/modules/entities should open for extension but closed for any modification
