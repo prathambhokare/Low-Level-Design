@@ -1,51 +1,50 @@
 # Low-Level-Design
-System Design & LLD Concepts Cheat Sheet
-Problem Statement
 
-Consider a Library Management System where users can:
+# System Design & LLD Concepts Cheat Sheet
 
-Search books
-Borrow books
-Return books
-Reserve books
-Make payments (if required)
+## Common Interview Question
 
-While designing such systems, interviewers often go beyond entities and ask questions related to concurrency, consistency, transactions, and scalability.
+### How will you prevent two users from borrowing the last available copy?
 
-This document covers the most important concepts required to answer those questions.
-
-Common Interview Question
-Q: How will you prevent two users from borrowing the last available copy?
-Basic Answer
+**Basic Answer**
 
 For a single-node application, a synchronized block can prevent concurrent access.
 
+```java
 synchronized void borrowBook() {
-   // borrow logic
+    // borrow logic
 }
-Better Answer
+```
 
-In a distributed deployment, synchronized is insufficient because multiple application instances may process requests simultaneously.
+**Better Answer**
+
+In a distributed deployment, `synchronized` is insufficient because multiple application instances may process requests simultaneously.
 
 Use:
 
-Database Transactions
-Optimistic Locking
-Pessimistic Locking
+* Database Transactions
+* Optimistic Locking
+* Pessimistic Locking
 
 to ensure inventory consistency.
 
-1. Resource Reservation
-Problem
+---
+
+# 1. Resource Reservation
+
+## Problem
 
 Suppose a book has:
 
+```text
 Copies = 1
+```
 
 Two users request it simultaneously.
 
 Without reservation:
 
+```text
 User A requests
 ↓
 Waiting for approval
@@ -55,57 +54,72 @@ User B requests
 Waiting for approval
 
 Admin approves both
+```
 
 Result:
 
+```text
 Copies = 1
 Borrowed = 2
+```
 
 Impossible state.
 
-Solution
+## Solution
 
 Reserve inventory immediately.
 
+```text
 Available Copies = 0
 Reserved Copies = 1
+```
 
 Now no other user can request the same copy.
 
-Real World Examples
-BookMyShow seat booking
-Hotel reservations
-Airline seat reservations
-Amazon inventory reservation
-Key Principle
+## Real World Examples
 
-A reservation temporarily protects a resource while a workflow is still in progress.
+* BookMyShow seat booking
+* Hotel reservations
+* Airline seat reservations
+* Amazon inventory reservation
 
-2. TTL (Time To Live)
-Problem
+**Key Principle:** A reservation temporarily protects a resource while a workflow is still in progress.
+
+---
+
+# 2. TTL (Time To Live)
+
+## Problem
 
 A user reserves a book but never completes payment.
 
 The resource remains blocked forever.
 
-Solution
+## Solution
 
 Add expiration.
 
+```text
 Reservation Time = 10:00 AM
 
 TTL = 30 mins
 
 Expires At = 10:30 AM
-State Flow
+```
+
+## State Flow
+
+```text
 AVAILABLE
     ↓
 RESERVED
     ↓
 BORROWED
+```
 
 or
 
+```text
 AVAILABLE
     ↓
 RESERVED
@@ -113,35 +127,51 @@ RESERVED
 EXPIRED
     ↓
 AVAILABLE
-Cleanup Job
+```
+
+## Cleanup Job
+
+```sql
 SELECT *
 FROM BorrowRequest
 WHERE status='RESERVED'
 AND expiresAt < NOW();
+```
 
 Release reserved inventory.
 
-Important Insight
+## Important Insight
 
-The cleanup job is NOT the source of truth.
+The cleanup job is **not** the source of truth.
 
 The source of truth is:
 
+```java
 expiresAt
+```
 
 Every operation must verify:
 
-if(now > expiresAt)
+```java
+if(now > expiresAt) {
+    throw new ReservationExpiredException();
+}
+```
 
 before proceeding.
 
-3. State Machine
+---
+
+# 3. State Machine
 
 A state machine defines:
 
-Valid states
-Valid transitions
-Borrow Request States
+* Valid states
+* Valid transitions
+
+## Borrow Request States
+
+```text
 INITIATED
 PENDING
 APPROVED
@@ -149,7 +179,11 @@ BORROWED
 RETURNED
 REJECTED
 EXPIRED
-Valid Transitions
+```
+
+## Valid Transitions
+
+```text
 INITIATED
     ↓
 PENDING
@@ -159,137 +193,148 @@ APPROVED
 BORROWED
     ↓
 RETURNED
-Invalid Transitions
+```
+
+## Invalid Transitions
+
+```text
 REJECTED
     ↓
 BORROWED
+```
+
+```text
 RETURNED
     ↓
 APPROVED
-Why Important?
+```
+
+**Why?**
 
 State machines prevent illegal business operations and keep data consistent.
 
-4. Transaction Boundaries
+---
+
+# 4. Transaction Boundaries
 
 A transaction ensures:
 
+```text
 All Operations Succeed
 OR
 All Operations Fail
-Example
+```
+
+## Example
 
 Borrow Book Workflow:
 
+```text
 Decrease Available Copies
 Create Borrow Request
 Create Payment Record
 Send Notification
-Failure Scenario
+```
+
+## Failure Scenario
+
+```text
 Decrease Available Copies ✔
 Create Borrow Request ✔
 Create Payment Record ✘
+```
 
 Now inventory has changed but payment does not exist.
 
-Data becomes inconsistent.
+## Solution
 
-Solution
-
-Use transactions.
-
+```java
 @Transactional
 public void borrowBook() {
     updateInventory();
     createBorrowRequest();
     createPayment();
 }
+```
 
 Result:
 
+```text
 SUCCESS → Commit
 
 Failure → Rollback
-Banking Example
+```
 
-Without transaction:
+---
 
-Deduct ₹1000 from Account A ✔
+# 5. Optimistic Locking
 
-Add ₹1000 to Account B ✘
-
-Money disappears.
-
-Transactions prevent such issues.
-
-5. Optimistic Locking
-Idea
+## Idea
 
 Assume conflicts are rare.
 
 Detect conflicts during update.
 
-Entity
-Book
-{
-    bookId
-    copies
-    version
+## Entity
+
+```java
+class Book {
+    Long bookId;
+    int copies;
+
+    @Version
+    Long version;
 }
-Scenario
+```
 
-Current State:
+## Scenario
 
+Current state:
+
+```text
 copies = 1
 version = 5
+```
 
-User A reads:
+User A and User B both read the same row.
 
-copies = 1
-version = 5
+User A updates first:
 
-User B reads:
-
-copies = 1
-version = 5
-User A Updates
+```text
 copies = 0
 version = 6
+```
 
-Success.
+User B's update fails because the version has changed.
 
-User B Updates
-UPDATE book
-SET copies = 0,
-    version = 6
-WHERE version = 5;
+## Benefits
 
-Fails because:
+* High performance
+* No waiting
+* Highly scalable
 
-Current version = 6
-Benefits
-High performance
-No waiting
-Highly scalable
-Common Usage
-@Version
-private Long version;
+---
 
-in JPA/Hibernate.
+# 6. Pessimistic Locking
 
-6. Pessimistic Locking
-Idea
+## Idea
 
 Assume conflicts are common.
 
 Lock the resource before modification.
 
-Example
+## Example
+
+```sql
 SELECT *
 FROM BOOK
 WHERE ID = 1
 FOR UPDATE;
-Flow
+```
+
+## Flow
+
+```text
 Transaction A
     ↓
 LOCK BOOK
@@ -299,69 +344,82 @@ Update
 Commit
     ↓
 Unlock
+
 Transaction B
     ↓
 WAIT
+```
 
 until Transaction A completes.
 
-Benefits
+## Benefits
 
-Very safe.
+* Very safe
+* Prevents concurrent modifications
 
-Drawbacks
-Lower throughput
-Increased waiting time
-Reduced scalability
-Optimistic vs Pessimistic Locking
-Feature	Optimistic	Pessimistic
-Lock Row	No	Yes
-Performance	High	Lower
-Wait Time	No	Yes
-Conflict Handling	Detect Later	Prevent Earlier
-Scalability	High	Lower
-Best Use Case	Read-heavy systems	High contention systems
-7. Inventory Management
+## Drawbacks
 
-Inventory management tracks the lifecycle of resources.
+* Lower throughput
+* Increased waiting time
 
-Example
+---
+
+# 7. Inventory Management
+
+Track resource lifecycle.
+
+## Example
+
+```text
 Total Copies = 10
-
-Track separately:
 
 Available = 7
 Reserved = 2
 Borrowed = 1
-Invariant
+```
 
-Always maintain:
+## Invariant
 
+```text
 Total =
 Available +
 Reserved +
 Borrowed
-Reservation
+```
+
+## Reservation
+
+```text
 Available--
 Reserved++
-Borrow
+```
+
+## Borrow
+
+```text
 Reserved--
 Borrowed++
-Return
+```
+
+## Return
+
+```text
 Borrowed--
 Available++
-Reservation Expiry
+```
+
+## Reservation Expiry
+
+```text
 Reserved--
 Available++
-Why Important?
+```
 
-Prevents:
+---
 
-Negative inventory
-Duplicate allocations
-Lost resources
-Inconsistent counts
-How All Concepts Work Together
+# How Everything Fits Together
+
+```text
 User Requests Book
         ↓
 Reserve Inventory
@@ -381,49 +439,49 @@ Payment
 Transaction
         ↓
 State = BORROWED
-Concurrency Protection
+```
 
-Use:
+## Concurrency Protection
 
-Optimistic Locking
-OR
-Pessimistic Locking
-Expired Reservations
+* Optimistic Locking
+* Pessimistic Locking
 
-Handled using:
+## Expired Reservations
 
-TTL
-+
-Cleanup Job
-Workflow Validation
+* TTL
+* Cleanup Job
 
-Handled using:
+## Workflow Validation
 
-State Machine
-Consistency
+* State Machine
 
-Handled using:
+## Consistency
 
-Transactions
-Final Takeaway
+* Transactions
+
+---
+
+# Final Takeaway
 
 Most real-world systems such as:
 
-Amazon Inventory
-Flight Booking
-Hotel Reservation
-Movie Ticket Booking
-Food Delivery
-Banking Transfers
-Library Management
+* Amazon Inventory
+* Flight Booking
+* Hotel Reservation
+* Movie Ticket Booking
+* Food Delivery
+* Banking Transfers
+* Library Management
 
-are built using a combination of:
+use a combination of:
 
-Resource Reservation
-TTL (Expiration)
-State Machines
-Transactions
-Optimistic/Pessimistic Locking
-Inventory Management
+1. Resource Reservation
+2. TTL (Expiration)
+3. State Machines
+4. Transactions
+5. Optimistic/Pessimistic Locking
+6. Inventory Management
 
-Understanding these concepts deeply allows you to design scalable, consistent, and production-ready systems and answer many SDE-2 level LLD interview questions confidently.
+These patterns appear repeatedly in SDE-2 level LLD and System Design interviews.
+
+You can copy this directly into a `README.md` file and GitHub will render it properly with headings, code blocks, lists, and diagrams.
