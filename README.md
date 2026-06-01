@@ -481,7 +481,3 @@ use a combination of:
 4. Transactions
 5. Optimistic/Pessimistic Locking
 6. Inventory Management
-
-These patterns appear repeatedly in SDE-2 level LLD and System Design interviews.
-
-You can copy this directly into a `README.md` file and GitHub will render it properly with headings, code blocks, lists, and diagrams.
